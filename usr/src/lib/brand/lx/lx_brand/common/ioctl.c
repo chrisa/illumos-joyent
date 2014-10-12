@@ -63,6 +63,7 @@
 #include <sys/ptyvar.h>
 #include <sys/audio.h>
 #include <sys/mixer.h>
+#include <sys/dtrace.h>
 
 /* Define _KERNEL to get the devt manipulation macros. */
 #define	_KERNEL
@@ -2405,6 +2406,47 @@ static oss_fmt_translator_t oft_table[] = {
 };
 
 /*
+ * DTrace /dev/dtrace/dtrace and /dev/dtrace/helper support
+ */
+
+static int
+/*ARGSUSED*/
+ict_dtrace(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
+{
+	int ret;
+	minor_t minor;
+
+	lx_debug("\tioctl(%d, 0x%x - %s, ...)",
+	    fd, cmd, cmd_str);
+
+	minor = getminor(stat->st_rdev);
+	if (minor != DTRACEMNRN_DTRACE)
+		return (-EINVAL);
+
+	ret = ioctl(fd, cmd, arg);
+	return (ret < 0 ? -errno : ret);
+}
+
+static int
+/*ARGSUSED*/
+ict_dtrace_helper(int fd, struct stat *stat, int cmd, char *cmd_str, intptr_t arg)
+{
+	int ret;
+	minor_t minor;
+
+	lx_debug("\tioctl(%d, 0x%x - %s, ...)",
+	    fd, cmd, cmd_str);
+
+	minor = getminor(stat->st_rdev);
+	if (minor != DTRACEMNRN_HELPER)
+		return (-EINVAL);
+
+	ret = ioctl(fd, cmd, arg);
+	return (ret < 0 ? -errno : ret);
+}
+
+
+/*
  * Ioctl translator definitions.
  */
 
@@ -2606,6 +2648,38 @@ static ioc_dev_translator_t ioc_translator_zcons = {
 	ioc_cmd_translators_zcons
 };
 
+static ioc_cmd_translator_t ioc_cmd_translators_dtrace[] = {
+	IOC_CMD_TRANSLATORS_ALL
+
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_PROVIDER,      ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_PROBES,        ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_BUFSNAP,       ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_PROBEMATCH,    ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_ENABLE,        ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_AGGSNAP,       ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_EPROBE,        ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_PROBEARG,      ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_CONF,          ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_STATUS,        ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_GO,            ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_STOP,          ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_AGGDESC,       ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_FORMAT,        ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_DOFGET,        ict_dtrace)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEIOC_REPLICATE,     ict_dtrace)
+
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEHIOC_ADD,          ict_dtrace_helper)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEHIOC_REMOVE,       ict_dtrace_helper)
+	IOC_CMD_TRANSLATOR_CUSTOM(DTRACEHIOC_ADDDOF,       ict_dtrace_helper)
+
+	IOC_CMD_TRANSLATOR_END
+};
+static ioc_dev_translator_t ioc_translator_dtrace = {
+	"dtrace",	 /* idt_driver */
+	0,		 /* idt_major */
+	ioc_cmd_translators_dtrace
+};
+
 static ioc_cmd_translator_t ioc_cmd_translators_lx_audio[] = {
 	IOC_CMD_TRANSLATORS_ALL
 
@@ -2684,6 +2758,7 @@ static ioc_dev_translator_t *ioc_translators_dev[] = {
 	&ioc_translator_pts,
 	&ioc_translator_sy,
 	&ioc_translator_zcons,
+	&ioc_translator_dtrace,
 	NULL
 };
 
